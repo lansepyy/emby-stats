@@ -28,13 +28,24 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true)
       const data = await api.getServers()
-      setServers(data.servers || [])
-      
-      // 如果没有当前服务器，设置默认服务器
-      if (!currentServer && data.servers && data.servers.length > 0) {
-        const defaultServer = data.servers.find((s: Server) => s.is_default) || data.servers[0]
-        setCurrentServerState(defaultServer)
-        localStorage.setItem('currentServerId', defaultServer.id)
+      const serverList = data.servers || []
+      setServers(serverList)
+
+      if (serverList.length > 0) {
+        const savedServerId = localStorage.getItem('currentServerId')
+        const savedServer = savedServerId ? serverList.find((s: Server) => s.id === savedServerId) : null
+        const stillExistsCurrentServer = currentServer
+          ? serverList.find((s: Server) => s.id === currentServer.id)
+          : null
+        const nextServer = savedServer || stillExistsCurrentServer || serverList.find((s: Server) => s.is_default) || serverList[0]
+
+        if (!currentServer || currentServer.id !== nextServer.id) {
+          setCurrentServerState(nextServer)
+        }
+        localStorage.setItem('currentServerId', nextServer.id)
+      } else {
+        setCurrentServerState(null)
+        localStorage.removeItem('currentServerId')
       }
     } catch (error) {
       console.error('Failed to fetch servers:', error)

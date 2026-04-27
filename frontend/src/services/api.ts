@@ -33,13 +33,13 @@ export type FilterParams = Record<string, string>
 // 构建带筛选参数的查询字符串
 function buildQueryString(params: FilterParams): string {
   const searchParams = new URLSearchParams()
-  
+
   // 添加server_id参数
   const serverId = getCurrentServerId()
   if (serverId) {
     searchParams.set('server_id', serverId)
   }
-  
+
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== '') {
       searchParams.set(key, value)
@@ -50,8 +50,8 @@ function buildQueryString(params: FilterParams): string {
 
 async function fetchAPI<T>(endpoint: string, params?: FilterParams): Promise<T> {
   let url = `${API_BASE}${endpoint}`
-  if (params && Object.keys(params).length > 0) {
-    const queryString = buildQueryString(params)
+  const queryString = buildQueryString(params || {})
+  if (queryString) {
     url += (endpoint.includes('?') ? '&' : '?') + queryString
   }
 

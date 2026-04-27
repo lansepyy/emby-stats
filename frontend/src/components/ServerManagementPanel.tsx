@@ -212,11 +212,11 @@ export function ServerManagementPanel({ isOpen, onClose }: ServerManagementPanel
                     {servers.map((server) => (
                       <div
                         key={server.id}
-                        className={`p-3 rounded-lg border ${
-                          currentServer?.id === server.id
-                            ? 'border-primary bg-primary/5'
-                            : 'border-[var(--color-border)] bg-content1'
-                        }`}
+                        onClick={() => setCurrentServer(server)}
+                        className={`p-3 rounded-lg border ${currentServer?.id === server.id
+                          ? 'border-primary bg-primary/5'
+                          : 'border-[var(--color-border)] bg-content1'
+                          } cursor-pointer transition-colors hover:border-primary/60 hover:bg-primary/5`}
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
@@ -239,7 +239,10 @@ export function ServerManagementPanel({ isOpen, onClose }: ServerManagementPanel
                           </div>
                           <div className="flex items-center gap-1 ml-2">
                             <button
-                              onClick={() => handleEdit(server)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleEdit(server)
+                              }}
                               className="p-1.5 rounded hover:bg-[var(--color-hover-overlay)] transition-colors"
                               title="编辑"
                             >
@@ -247,7 +250,10 @@ export function ServerManagementPanel({ isOpen, onClose }: ServerManagementPanel
                             </button>
                             {servers.length > 1 && (
                               <button
-                                onClick={() => handleDelete(server.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDelete(server.id)
+                                }}
                                 className="p-1.5 rounded hover:bg-danger/10 text-danger transition-colors"
                                 title="删除"
                               >
@@ -439,8 +445,8 @@ export function ServerManagementPanel({ isOpen, onClose }: ServerManagementPanel
               filePickerField === 'playback_db'
                 ? '选择播放记录数据库'
                 : filePickerField === 'users_db'
-                ? '选择用户数据库'
-                : '选择认证数据库'
+                  ? '选择用户数据库'
+                  : '选择认证数据库'
             }
             description="浏览容器内文件，选择 .db 数据库文件"
           />

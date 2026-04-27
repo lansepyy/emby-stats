@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { api } from '@/services/api'
 import { useAuth } from '@/contexts/AuthContext'
+import { useServer } from '@/contexts/ServerContext'
 
 export interface NameMappingItem {
   original: string
@@ -72,6 +73,7 @@ const FilterContext = createContext<FilterContextType | undefined>(undefined)
 
 export function FilterProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth()
+  const { currentServer } = useServer()
 
   const [filters, setFilters] = useState<FilterState>(() => {
     if (typeof window !== 'undefined') {
@@ -110,7 +112,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     } finally {
       setOptionsLoading(false)
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, currentServer?.id])
 
   // 当登录状态变化时加载筛选选项
   useEffect(() => {
@@ -176,6 +178,10 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   const buildQueryParams = useCallback(() => {
     const params: Record<string, string> = {}
 
+    if (currentServer?.id) {
+      params.server_id = currentServer.id
+    }
+
     if (filters.useDateRange) {
       if (filters.startDate) params.start_date = filters.startDate
       if (filters.endDate) params.end_date = filters.endDate
@@ -200,7 +206,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     }
 
     return params
-  }, [filters])
+  }, [filters, currentServer?.id])
 
   return (
     <FilterContext.Provider

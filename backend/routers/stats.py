@@ -554,10 +554,12 @@ async def get_hourly_stats(
 
 
 @router.get("/now-playing")
-async def get_now_playing():
+async def get_now_playing(
+    server_id: Optional[str] = Query(default=None, description="服务器ID"),
+):
     """获取当前正在播放的内容"""
     user_map = await user_service.get_user_map()
-    sessions = await emby_service.get_now_playing()
+    sessions = await emby_service.get_now_playing(server_id)
 
     data = []
     for session in sessions:
@@ -578,10 +580,11 @@ async def get_now_playing():
 
         # 获取海报
         poster_url = None
+        suffix = f"?server_id={server_id}" if server_id else ""
         if item_type == "Episode" and item.get("SeriesId"):
-            poster_url = f"/api/poster/{item['SeriesId']}"
+            poster_url = f"/api/poster/{item['SeriesId']}{suffix}"
         elif item.get("ImageTags", {}).get("Primary"):
-            poster_url = f"/api/poster/{item_id}"
+            poster_url = f"/api/poster/{item_id}{suffix}"
 
         # 构建显示名称
         if series_name:
@@ -689,9 +692,9 @@ async def get_recent_plays(
                 username = user_service.match_username(user_id, user_map)
 
                 # 获取海报和背景图
-                info = await emby_service.get_item_info(str(item_id))
-                poster_url = emby_service.get_poster_url(str(item_id), item_type, info)
-                backdrop_url = emby_service.get_backdrop_url(str(item_id), item_type, info)
+                info = await emby_service.get_item_info(str(item_id), server_id)
+                poster_url = emby_service.get_poster_url(str(item_id), item_type, info, server_id)
+                backdrop_url = emby_service.get_backdrop_url(str(item_id), item_type, info, server_id)
 
                 # 提取剧名
                 show_name = item_name.split(" - ")[0] if " - " in item_name else item_name
@@ -703,9 +706,10 @@ async def get_recent_plays(
                 if item_type == "Episode" and not backdrop_url and info:
                     series_id = info.get("SeriesId")
                     if series_id:
-                        series_info = await emby_service.get_item_info(series_id)
+                        series_info = await emby_service.get_item_info(series_id, server_id)
                         if series_info and series_info.get("BackdropImageTags"):
-                            backdrop_url = f"/api/backdrop/{series_id}"
+                            suffix = f"?server_id={server_id}" if server_id else ""
+                            backdrop_url = f"/api/backdrop/{series_id}{suffix}"
 
                 data.append({
                     "time": row[0],

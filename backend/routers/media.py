@@ -10,7 +10,7 @@ from typing import Optional, List
 import httpx
 import logging
 
-from database import get_playback_db, get_count_expr, local_date
+from database import get_playback_db, get_count_expr, local_date, get_server_config
 from services.emby import emby_service
 
 logger = logging.getLogger(__name__)
@@ -167,9 +167,9 @@ async def get_top_content(
             item_type_val = info["item_type"]
 
             # 获取海报 URL 和剧集介绍
-            item_info = await emby_service.get_item_info(str(item_id))
-            poster_url = emby_service.get_poster_url(str(item_id), item_type_val, item_info)
-            backdrop_url = emby_service.get_backdrop_url(str(item_id), item_type_val, item_info)
+            item_info = await emby_service.get_item_info(str(item_id), server_id)
+            poster_url = emby_service.get_poster_url(str(item_id), item_type_val, item_info, server_id)
+            backdrop_url = emby_service.get_backdrop_url(str(item_id), item_type_val, item_info, server_id)
 
             # 获取 overview（剧集介绍）
             overview = item_info.get("Overview", "") if item_info else ""
@@ -177,12 +177,13 @@ async def get_top_content(
             if item_type_val == "Episode" and item_info:
                 series_id = item_info.get("SeriesId")
                 if series_id:
-                    series_info = await emby_service.get_item_info(series_id)
+                    series_info = await emby_service.get_item_info(series_id, server_id)
                     if series_info:
                         overview = series_info.get("Overview", overview)
                         # 也尝试从剧集获取 backdrop
                         if not backdrop_url and series_info.get("BackdropImageTags"):
-                            backdrop_url = f"/api/backdrop/{series_id}"
+                            suffix = f"?server_id={server_id}" if server_id else ""
+                            backdrop_url = f"/api/backdrop/{series_id}{suffix}"
 
             data.append({
                 "item_id": item_id,
@@ -270,16 +271,17 @@ async def get_top_shows(
         backdrop_url = None
         overview = ""
         if data["item_id"]:
-            info = await emby_service.get_item_info(str(data["item_id"]))
+            info = await emby_service.get_item_info(str(data["item_id"]), server_id)
             if info and info.get("SeriesId"):
                 series_id = info["SeriesId"]
-                poster_url = f"/api/poster/{series_id}"
+                suffix = f"?server_id={server_id}" if server_id else ""
+                poster_url = f"/api/poster/{series_id}{suffix}"
                 # 获取剧集总介绍
-                series_info = await emby_service.get_item_info(series_id)
+                series_info = await emby_service.get_item_info(series_id, server_id)
                 if series_info:
                     overview = series_info.get("Overview", "")
                     if series_info.get("BackdropImageTags"):
-                        backdrop_url = f"/api/backdrop/{series_id}"
+                        backdrop_url = f"/api/backdrop/{series_id}{suffix}"
 
         result.append({
             "show_name": show_name,
@@ -298,10 +300,11 @@ async def get_top_shows(
 async def get_poster(
     item_id: str,
     maxHeight: int = Query(default=300),
-    maxWidth: int = Query(default=200)
+    maxWidth: int = Query(default=200),
+    server_id: Optional[str] = Query(default=None),
 ):
     """代理获取 Emby 海报图片"""
-    content, content_type = await emby_service.get_poster(item_id, maxHeight, maxWidth)
+    content, content_type = await emby_service.get_poster(item_id, maxHeight, maxWidth, server_id)
 
     return StreamingResponse(
         iter([content]),
@@ -314,10 +317,11 @@ async def get_poster(
 async def get_backdrop(
     item_id: str,
     maxHeight: int = Query(default=720),
-    maxWidth: int = Query(default=1280)
+    maxWidth: int = Query(default=1280),
+    server_id: Optional[str] = Query(default=None),
 ):
     """代理获取 Emby 背景图(横版)"""
-    content, content_type = await emby_service.get_backdrop(item_id, maxHeight, maxWidth)
+    content, content_type = await emby_service.get_backdrop(item_id, maxHeight, maxWidth, server_id)
 
     return StreamingResponse(
         iter([content]),
@@ -345,14 +349,15 @@ async def get_favorites(
     """
     try:
         # 从 Emby API 获取所有用户
-        api_key = await emby_service.get_api_key()
+        server_config = get_server_config(server_id)
+        api_key = await emby_service.get_api_key(server_id)
         if not api_key:
             raise HTTPException(status_code=500, detail="无法获取 Emby API Key")
         
         async with httpx.AsyncClient() as client:
             # 获取所有用户列表
             users_resp = await client.get(
-                f"{emby_service._emby_url}/emby/Users",
+                f"{server_config['emby_url']}/emby/Users",
                 params={"api_key": api_key},
                 timeout=10
             )
@@ -373,7 +378,7 @@ async def get_favorites(
                 
                 # 获取用户的收藏项目
                 favorites_resp = await client.get(
-                    f"{emby_service._emby_url}/emby/Users/{user_id}/Items",
+                    f"{server_config['emby_url']}/emby/Users/{user_id}/Items",
                     params={
                         "api_key": api_key,
                         "Filters": "IsFavorite",
@@ -459,14 +464,14 @@ async def get_favorites(
             
             # 为每个项目获取海报信息
             for item in ranking_list:
-                poster_info = await emby_service.get_item_images(item["item_id"])
+                poster_info = await emby_service.get_item_images(item["item_id"], server_id)
                 item["poster_url"] = poster_info.get("poster_url")
                 item["backdrop_url"] = poster_info.get("backdrop_url")
                 item["overview"] = poster_info.get("overview")
             
             for user in user_list:
                 for fav in user["favorites"]:
-                    poster_info = await emby_service.get_item_images(fav["item_id"])
+                    poster_info = await emby_service.get_item_images(fav["item_id"], server_id)
                     fav["poster_url"] = poster_info.get("poster_url")
                     fav["backdrop_url"] = poster_info.get("backdrop_url")
                     fav["overview"] = poster_info.get("overview")

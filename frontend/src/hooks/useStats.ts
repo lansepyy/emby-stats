@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api, type FilterParams } from '@/services/api'
+import { useServer } from '@/contexts/ServerContext'
 import type {
   OverviewData,
   TrendData,
@@ -36,7 +37,7 @@ export function useOverview(params: FilterParams) {
     } finally {
       setLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey])
 
   useEffect(() => {
@@ -63,7 +64,7 @@ export function useTrend(params: FilterParams) {
     } finally {
       setLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey])
 
   useEffect(() => {
@@ -90,7 +91,7 @@ export function useHourly(params: FilterParams) {
     } finally {
       setLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey])
 
   useEffect(() => {
@@ -117,7 +118,7 @@ export function useTopShows(params: FilterParams, limit = 16) {
     } finally {
       setLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey, limit])
 
   useEffect(() => {
@@ -144,7 +145,7 @@ export function useTopContent(params: FilterParams, limit = 18) {
     } finally {
       setLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey, limit])
 
   useEffect(() => {
@@ -171,7 +172,7 @@ export function useUsers(params: FilterParams) {
     } finally {
       setLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey])
 
   useEffect(() => {
@@ -198,7 +199,7 @@ export function useClients(params: FilterParams) {
     } finally {
       setLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey])
 
   useEffect(() => {
@@ -225,7 +226,7 @@ export function usePlaybackMethods(params: FilterParams) {
     } finally {
       setLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey])
 
   useEffect(() => {
@@ -252,7 +253,7 @@ export function useDevices(params: FilterParams) {
     } finally {
       setLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey])
 
   useEffect(() => {
@@ -279,7 +280,7 @@ export function useRecent(params: FilterParams, limit = 48) {
     } finally {
       setLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey, limit])
 
   useEffect(() => {
@@ -290,6 +291,7 @@ export function useRecent(params: FilterParams, limit = 48) {
 }
 
 export function useNowPlaying(refreshInterval = 10000) {
+  const { currentServer } = useServer()
   const [data, setData] = useState<NowPlayingData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
@@ -305,7 +307,7 @@ export function useNowPlaying(refreshInterval = 10000) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentServer?.id])
 
   useEffect(() => {
     fetch()

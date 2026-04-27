@@ -5,58 +5,64 @@ Emby API 服务模块
 import httpx
 import aiosqlite
 from config import settings
+from database import get_server_config
 
 
 class EmbyService:
     """Emby 服务类，管理与 Emby 服务器的交互"""
 
     def __init__(self):
-        self._api_key_cache: str | None = None
-        self._user_id_cache: str | None = None
+        self._api_key_cache: dict[str, str] = {}
+        self._user_id_cache: dict[str, str] = {}
         self._item_info_cache: dict = {}
-        self._emby_url = settings.EMBY_URL
-        self._emby_url = settings.EMBY_URL
 
-    async def get_api_key(self) -> str:
+    def _cache_key(self, server_id: str | None = None) -> str:
+        return server_id or "__default__"
+
+    async def get_api_key(self, server_id: str | None = None) -> str:
         """获取 Emby API Key，优先使用环境变量，否则从数据库获取"""
+        server_config = get_server_config(server_id)
         # 优先使用环境变量配置的 API Key
-        if settings.EMBY_API_KEY:
-            return settings.EMBY_API_KEY
+        if server_config.get('emby_api_key'):
+            return server_config['emby_api_key']
 
-        if self._api_key_cache:
-            return self._api_key_cache
+        cache_key = self._cache_key(server_id)
+        if cache_key in self._api_key_cache:
+            return self._api_key_cache[cache_key]
 
         try:
-            async with aiosqlite.connect(settings.AUTH_DB) as db:
+            async with aiosqlite.connect(server_config['auth_db']) as db:
                 async with db.execute(
                     "SELECT AccessToken FROM Tokens_2 WHERE IsActive=1 ORDER BY DateLastActivityInt DESC LIMIT 1"
                 ) as cursor:
                     row = await cursor.fetchone()
                     if row:
-                        self._api_key_cache = row[0]
-                        return self._api_key_cache
+                        self._api_key_cache[cache_key] = row[0]
+                        return self._api_key_cache[cache_key]
         except Exception as e:
             print(f"Error getting API key: {e}")
         return ""
 
-    async def get_user_id(self) -> str:
+    async def get_user_id(self, server_id: str | None = None) -> str:
         """获取一个 Emby 用户 ID 用于 API 调用"""
-        if self._user_id_cache:
-            return self._user_id_cache
+        cache_key = self._cache_key(server_id)
+        if cache_key in self._user_id_cache:
+            return self._user_id_cache[cache_key]
 
         try:
-            api_key = await self.get_api_key()
+            server_config = get_server_config(server_id)
+            api_key = await self.get_api_key(server_id)
             async with httpx.AsyncClient() as client:
                 resp = await client.get(
-                    f"{settings.EMBY_URL}/emby/Users",
+                    f"{server_config['emby_url']}/emby/Users",
                     params={"api_key": api_key},
                     timeout=10
                 )
                 if resp.status_code == 200:
                     users = resp.json()
                     if users:
-                        self._user_id_cache = users[0]["Id"]
-                        return self._user_id_cache
+                        self._user_id_cache[cache_key] = users[0]["Id"]
+                        return self._user_id_cache[cache_key]
         except Exception as e:
             print(f"Error getting user ID: {e}")
         return ""
@@ -80,20 +86,22 @@ class EmbyService:
             print(f"Error getting user info for {user_id}: {e}")
         return {}
 
-    async def get_item_info(self, item_id: str) -> dict:
+    async def get_item_info(self, item_id: str, server_id: str | None = None) -> dict:
         """获取媒体项目信息（包含海报等）"""
-        if item_id in self._item_info_cache:
-            return self._item_info_cache[item_id]
+        cache_key = (self._cache_key(server_id), item_id)
+        if cache_key in self._item_info_cache:
+            return self._item_info_cache[cache_key]
 
         try:
-            api_key = await self.get_api_key()
-            user_id = await self.get_user_id()
+            server_config = get_server_config(server_id)
+            api_key = await self.get_api_key(server_id)
+            user_id = await self.get_user_id(server_id)
             if not api_key or not user_id:
                 return {}
 
             async with httpx.AsyncClient() as client:
                 resp = await client.get(
-                    f"{settings.EMBY_URL}/emby/Users/{user_id}/Items/{item_id}",
+                    f"{server_config['emby_url']}/emby/Users/{user_id}/Items/{item_id}",
                     params={
                         "api_key": api_key,
                         "Fields": "SeriesInfo,ImageTags,SeriesPrimaryImageTag,PrimaryImageAspectRatio,Overview,BackdropImageTags"
@@ -102,7 +110,7 @@ class EmbyService:
                 )
                 if resp.status_code == 200:
                     info = resp.json()
-                    self._item_info_cache[item_id] = info
+                    self._item_info_cache[cache_key] = info
                     # 限制缓存大小
                     if len(self._item_info_cache) > settings.ITEM_CACHE_MAX_SIZE:
                         keys = list(self._item_info_cache.keys())[:settings.ITEM_CACHE_EVICT_COUNT]
@@ -113,16 +121,17 @@ class EmbyService:
             print(f"Error getting item info for {item_id}: {e}")
         return {}
 
-    async def get_poster(self, item_id: str, max_height: int = 300, max_width: int = 200) -> tuple[bytes, str]:
+    async def get_poster(self, item_id: str, max_height: int = 300, max_width: int = 200, server_id: str | None = None) -> tuple[bytes, str]:
         """获取海报图片，返回 (图片数据, content_type)"""
         try:
-            api_key = await self.get_api_key()
+            server_config = get_server_config(server_id)
+            api_key = await self.get_api_key(server_id)
             if not api_key:
                 return b"", "image/jpeg"
 
             async with httpx.AsyncClient() as client:
                 resp = await client.get(
-                    f"{settings.EMBY_URL}/emby/Items/{item_id}/Images/Primary",
+                    f"{server_config['emby_url']}/emby/Items/{item_id}/Images/Primary",
                     params={
                         "api_key": api_key,
                         "maxHeight": max_height,
@@ -138,16 +147,17 @@ class EmbyService:
 
         return b"", "image/jpeg"
 
-    async def get_backdrop(self, item_id: str, max_height: int = 720, max_width: int = 1280) -> tuple[bytes, str]:
+    async def get_backdrop(self, item_id: str, max_height: int = 720, max_width: int = 1280, server_id: str | None = None) -> tuple[bytes, str]:
         """获取背景图(横版)，返回 (图片数据, content_type)"""
         try:
-            api_key = await self.get_api_key()
+            server_config = get_server_config(server_id)
+            api_key = await self.get_api_key(server_id)
             if not api_key:
                 return b"", "image/jpeg"
 
             async with httpx.AsyncClient() as client:
                 resp = await client.get(
-                    f"{settings.EMBY_URL}/emby/Items/{item_id}/Images/Backdrop",
+                    f"{server_config['emby_url']}/emby/Items/{item_id}/Images/Backdrop",
                     params={
                         "api_key": api_key,
                         "maxHeight": max_height,
@@ -163,16 +173,17 @@ class EmbyService:
 
         return b"", "image/jpeg"
 
-    def get_poster_url(self, item_id: str, item_type: str, item_info: dict) -> str | None:
+    def get_poster_url(self, item_id: str, item_type: str, item_info: dict, server_id: str | None = None) -> str | None:
         """根据媒体信息获取海报 URL"""
         if not item_info:
             return None
+        suffix = f"?server_id={server_id}" if server_id else ""
 
         # 对于剧集，使用剧集海报；对于电影，使用自身海报
         if item_type == "Episode" and item_info.get("SeriesId"):
-            return f"/api/poster/{item_info['SeriesId']}"
+            return f"/api/poster/{item_info['SeriesId']}{suffix}"
         elif item_info.get("ImageTags", {}).get("Primary"):
-            return f"/api/poster/{item_id}"
+            return f"/api/poster/{item_id}{suffix}"
 
         return None
 
@@ -232,48 +243,50 @@ class EmbyService:
             print(f"上传封面异常: {e}")
             return False
     
-    def get_backdrop_url(self, item_id: str, item_type: str, item_info: dict) -> str | None:
+    def get_backdrop_url(self, item_id: str, item_type: str, item_info: dict, server_id: str | None = None) -> str | None:
         """根据媒体信息获取背景图(横版) URL"""
         if not item_info:
             return None
+        suffix = f"?server_id={server_id}" if server_id else ""
 
         # 对于剧集，使用剧集背景图
         if item_type == "Episode" and item_info.get("SeriesId"):
-            return f"/api/backdrop/{item_info['SeriesId']}"
+            return f"/api/backdrop/{item_info['SeriesId']}{suffix}"
         # 检查是否有 Backdrop 图片
         elif item_info.get("BackdropImageTags") and len(item_info.get("BackdropImageTags", [])) > 0:
-            return f"/api/backdrop/{item_id}"
+            return f"/api/backdrop/{item_id}{suffix}"
 
         return None
 
-    async def get_item_images(self, item_id: str) -> dict:
+    async def get_item_images(self, item_id: str, server_id: str | None = None) -> dict:
         """获取项目的图片URL和概述信息"""
         try:
-            item_info = await self.get_item_info(item_id)
+            item_info = await self.get_item_info(item_id, server_id)
             if not item_info:
                 return {}
             
             item_type = item_info.get("Type", "")
             
             return {
-                "poster_url": self.get_poster_url(item_id, item_type, item_info),
-                "backdrop_url": self.get_backdrop_url(item_id, item_type, item_info),
+                "poster_url": self.get_poster_url(item_id, item_type, item_info, server_id),
+                "backdrop_url": self.get_backdrop_url(item_id, item_type, item_info, server_id),
                 "overview": item_info.get("Overview", "")
             }
         except Exception as e:
             print(f"Error getting item images for {item_id}: {e}")
             return {}
 
-    async def get_now_playing(self) -> list[dict]:
+    async def get_now_playing(self, server_id: str | None = None) -> list[dict]:
         """获取当前正在播放的会话"""
         try:
-            api_key = await self.get_api_key()
+            server_config = get_server_config(server_id)
+            api_key = await self.get_api_key(server_id)
             if not api_key:
                 return []
 
             async with httpx.AsyncClient() as client:
                 resp = await client.get(
-                    f"{settings.EMBY_URL}/emby/Sessions",
+                    f"{server_config['emby_url']}/emby/Sessions",
                     params={"api_key": api_key},
                     timeout=10
                 )
